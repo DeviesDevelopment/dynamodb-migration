@@ -8,6 +8,7 @@ Resources:
     DeletionPolicy: Delete
     UpdateReplacePolicy: Delete
     Properties:
+      TableName: "dynamodb-migration-example-OriginalBooksTable"
       AttributeDefinitions:
         - AttributeName: isbn
           AttributeType: S
@@ -23,6 +24,7 @@ Resources:
     DeletionPolicy: Delete
     UpdateReplacePolicy: Delete
     Properties:
+      TableName: "dynamodb-migration-example-TargetBooksTable"
       AttributeDefinitions:
         - AttributeName: author
           AttributeType: S
