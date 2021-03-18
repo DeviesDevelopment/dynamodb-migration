@@ -3,13 +3,6 @@ const AWS = require('aws-sdk');
 const dynamodb = new AWS.DynamoDB();
 
 const originalTableName = "dynamodb-migration-example-OriginalBooksTable";
-let items = await scanWithPagination(originalTableName);
-
-let promises = [];
-items.forEach(item => {
-  promises.push(migrateItem(item, originalTableName));
-});
-await Promise.all(promises);
 
 const scanWithPagination = async (tableName) => {
   let items = [];
@@ -50,3 +43,15 @@ const migrateItem = (item, tableName) => {
   };
   return dynamodb.updateItem(params).promise();
 }
+
+const runMigration = async () => {
+  let items = await scanWithPagination(originalTableName);
+
+  let promises = [];
+  items.forEach(item => {
+    promises.push(migrateItem(item, originalTableName));
+  });
+  await Promise.all(promises);
+}
+
+runMigration();
