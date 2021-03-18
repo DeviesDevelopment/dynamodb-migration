@@ -5,8 +5,8 @@ Transform: "AWS::Serverless-2016-10-31"
 Resources:
   OriginalBooksTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       AttributeDefinitions:
         - AttributeName: isbn
@@ -20,8 +20,8 @@ Resources:
 
   TargetBooksTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       AttributeDefinitions:
         - AttributeName: author
@@ -67,10 +67,10 @@ Resources:
               let params = {
                 Key: {
                   author: {
-                    S: oldItem.author
-                  }
+                    S: oldItem.author.S
+                  },
                   title: {
-                    S: oldItem.title
+                    S: oldItem.title.S
                   }
                 },
                 TableName: process.env.TARGET_TABLE
@@ -125,7 +125,7 @@ Resources:
                   - dynamodb:ListStreams
               - Effect: Allow
                 Resource:
-                  - !Ref TargetBooksTable
+                  - !GetAtt TargetBooksTable.Arn
                 Action:
                   - dynamodb:PutItem
                   - dynamodb:DeleteItem
