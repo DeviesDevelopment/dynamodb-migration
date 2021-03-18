@@ -1,4 +1,7 @@
 const AWS = require('aws-sdk');
+AWS.config = new AWS.Config({
+  region: 'eu-west-1'
+});
 
 const dynamodb = new AWS.DynamoDB();
 
