@@ -1,0 +1,131 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+
+Resources:
+  OriginalBooksTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: isbn
+          AttributeType: S
+      KeySchema:
+        - AttributeName: isbn
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  TargetBooksTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: author
+          AttributeType: S
+        - AttributeName: title
+          AttributeType: S
+      KeySchema:
+        - AttributeName: author
+          KeyType: HASH
+        - AttributeName: title
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+
+  MigrateLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs12.x
+      Role: !GetAtt MigrateLambdaRole.Arn
+      Environment:
+        Variables:
+          TARGET_TABLE: !Ref TargetBooksTable
+      Events:
+        DDBEvent:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt OriginalBooksTable.StreamArn
+            StartingPosition: TRIM_HORIZON
+            BatchSize: 10
+      InlineCode: |
+        var AWS = require("aws-sdk");
+        var dynamodb = new AWS.DynamoDB();
+
+        module.exports.handler = (event, context, callback) => {
+          pushItems(event, context, callback);
+        };
+
+        function pushItems (event, context, callback) {
+          let promises = [];
+          event.Records.forEach(function(record) {
+            if (record.eventName === "REMOVE") {
+              let oldItem = record.dynamodb.OldImage;
+              let params = {
+                Key: {
+                  author: {
+                    S: oldItem.author
+                  }
+                  title: {
+                    S: oldItem.title
+                  }
+                },
+                TableName: process.env.TARGET_TABLE
+              };
+              promises.push(dynamodb.deleteItem(params).promise());
+            } else {
+              // CREATE or UPDATE event -> Upsert item in target table
+
+              let newItem = record.dynamodb.NewImage;
+
+              // Trim off field that was only there to trigger stream
+              delete newItem["migrate"];
+
+              let params = {
+                Item: newItem,
+                TableName: process.env.TARGET_TABLE
+              };
+              promises.push(dynamodb.putItem(params).promise());
+            }
+          });
+          Promise.all(promises)
+            .then(() => callback())
+            .catch((err) => callback(err));
+        }
+
+  MigrateLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+        - PolicyName: ReadDynamoDbStream
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Resource:
+                  - !GetAtt OriginalBooksTable.StreamArn
+                Action:
+                  - dynamodb:GetRecords
+                  - dynamodb:GetShardIterator
+                  - dynamodb:DescribeStream
+                  - dynamodb:ListShards
+                  - dynamodb:ListStreams
+              - Effect: Allow
+                Resource:
+                  - !Ref TargetBooksTable
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:DeleteItem
